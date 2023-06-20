@@ -1,10 +1,13 @@
-from fastapi import APIRouter, HTTPException
-from typing import Union
+from fastapi import APIRouter, HTTPException, status
 from db.models.user import User
+from db.schemas.user import userSchema
+from db.client import db_client
+
+
 
 router = APIRouter(prefix="/usersdb", 
                     tags=["users_db"],
-                    responses={404: {"message": "No encontrado"}})
+                    responses = {status.HTTP_404_NOT_FOUND: {"message": "No encontrado"}})
 
 
 
@@ -19,20 +22,21 @@ async def users():
 async def user(id: int):
     return searchUser(id)
 
-'''
-## DEPRECATED ##
-@router.get('/userquery/')
-async def user(id: int):
-    return searchUser(id)
-'''
 
-@router.post("/", response_model=User, status_code=201)
+@router.post("/", response_model=User, status_code=status.HTTP_201_CREATED)
 async def user(user: User):
-    if type(searchUser(user.id))==User:
-        raise HTTPException(status_code=204, detail="El usuario ya existe")
+    if type(searchUserByEmail(user.email))==User:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND , detail="El usuario ya existe")
 
-    users_list.append(user)
-    return user
+    userDict = dict(user)
+    del userDict['id']
+
+    id = db_client.local.users.insert_one(userDict).inserted_id
+
+    newUser = userSchema(db_client.local.users.find_one({"_id":id})) 
+
+    return User(**newUser)
         
 @router.put("/")
 async def user(user: User):
@@ -63,10 +67,13 @@ async def user(id: int):
         return {"exito": "Usuario eliminado"}
 
 
-def searchUser(id: int):
-    users = filter(lambda user: user.id == id, users_list)
+def searchUserByEmail(email: str):
+
     try:
-        return list(users)[0]    
+        user = db_client.local.users.find_one({"email": email}) 
+        return User(**userSchema(user))
     except:
         return {"error": "Usuario no encontrado"}
 
+def searchUser(id: int):
+    return ""
